@@ -172,6 +172,7 @@ struct common_speculative_stage_params {
     int32_t n_max = -1;
     int32_t n_min = -1;
     float   p_min = -1.0f;
+    int32_t mtp_heads = -1;
     int32_t dflash_cross_ctx = -1;
 
     uint16_t ngram_size_n = 0;
@@ -185,6 +186,7 @@ struct common_speculative_stage_params {
     bool has_n_max_override() const { return n_max >= 0; }
     bool has_n_min_override() const { return n_min >= 0; }
     bool has_p_min_override() const { return p_min >= 0.0f; }
+    bool has_mtp_heads_override() const { return mtp_heads >= 0; }
     bool has_dflash_cross_ctx_override() const { return dflash_cross_ctx >= 0; }
     bool has_ngram_size_n_override() const { return ngram_size_n > 0; }
     bool has_ngram_size_m_override() const { return ngram_size_m > 0; }
@@ -207,8 +209,8 @@ struct common_ngram_mod;
 struct common_params_speculative {
     common_speculative_type type = COMMON_SPECULATIVE_TYPE_NONE; // type of speculative decoding
 
-    // Recurrent-model checkpoint strategy for speculative decoding.
-    int recurrent_ckpt_mode = LLAMA_SPEC_CKPT_AUTO;
+    // Generic speculative checkpoint mode, recurrent spelling is a compatibility alias.
+    int spec_ckpt_mode = LLAMA_SPEC_CKPT_AUTO;
 
     std::string devices;
     std::string params;
@@ -218,6 +220,7 @@ struct common_params_speculative {
     int32_t n_max = 16; // number of tokens to draft during speculative decoding
     int32_t n_min = 0; // minimum number of tokens to draft during speculative decoding
     std::vector<common_speculative_stage_params> stages; // explicit stage chain for single-spec or self-spec + model fallback
+    int32_t mtp_heads = 1; // MTP heads to use; 1 is the default, while >1 and 0 (all model heads) are experimental
     int32_t dflash_cross_ctx = 512; // target-feature context window for DFlash
 
     float   p_split = 0.1f; // speculative decoding split probability
@@ -362,7 +365,7 @@ struct gpt_params {
         ,uint32_t       // upper codepoint
         ,std::string    // unicode script name
         ,float          // bias
-    >>> allow_ruless;
+    >>> allow_rules;
     std::vector<std::string> allow_pieces;  // each token to allowlist
     std::vector<std::string> allow_kws;     // keywords
     size_t allow_kw_delay;  // minimum n_decoded before first keyword is active
@@ -419,6 +422,7 @@ struct gpt_params {
     bool rope_cache        = false; // if to use RoPE cache (for supported models)
     bool graph_reuse       = true;  // if to reuse compute graphs
     bool dsa               = false; // enable GLM DSA sparse attention (off by default; opt-in via --dsa)
+    bool fused_idx_topk    = true;  // enable the fused indexer topk op (off by default; opt-in via -fidx or --fused-indexer-topk)
     int  dsa_top_k         = -1;    // DSA top-k override (<0 => use the model's configured indexer_top_k)
     int  min_experts       = -1;
     float thresh_experts   = 0;
@@ -443,6 +447,8 @@ struct gpt_params {
     bool merge_qkv         = false; // if true, merge separate Q, K, V tensors into a single, contiguous tensor
     bool merge_up_gate_exps= false; // if true, merge ffn_up_exps and ffn_gate_exps into a single, contiguous tensor
     bool defer_experts     = false; // if true, defer expert mmap residency to speed up model loading (Linux only)
+    bool prefetch_experts  = false; // if true, stream mmap'd MoE expert weights into the page cache (Linux only)
+    int  prefetch_experts_threads = 0; // number of expert prefetch workers (<=0 = auto)
     bool k_cache_hadamard  = false; // if true, use Hadamard transform for the K-cache (only makes sense with quantized cache)
     bool v_cache_hadamard  = false; // if true, use Hadamard transform for the V-cache (only makes sense with quantized cache, which requires FA)
     bool split_mode_graph_scheduling = false; // if true, force split mode graph scheduling
@@ -481,9 +487,9 @@ struct gpt_params {
 
     // embedding
     bool embedding         = false; // get only sentence embedding
-    int32_t embd_normalize = 2;     // normalisation for embendings (-1=none, 0=max absolute int16, 1=taxicab, 2=euclidean, >2=p-norm)
-    std::string embd_out   = "";    // empty = default, "array" = [[],[]...], "json" = openai style, "json+" = same "json" + cosine similarity matrix
-    std::string embd_sep   = "\n";  // separator of embendings
+    int32_t embd_normalize = 2;     // normalization for embeddings (-1=none, 0=max absolute int16, 1=taxicab, 2=euclidean, >2=p-norm)
+    std::string embd_out   = "";    // empty = default, "array" = [[],[]...], "json" = OpenAI style, "json+" = same "json" + cosine similarity matrix
+    std::string embd_sep   = "\n";  // separator of embeddings
 
     // server params
     int32_t port           = 8080;         // server listens on this network port
